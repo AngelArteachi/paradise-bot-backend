@@ -1,0 +1,28 @@
+# Entornos Virtuales
+venv/
+env/
+.env/
+
+# Variables de Configuración Seguras (¡CRÍTICO no subirlas!)
+.env
+
+# Base de Datos Local de Pruebas
+db.sqlite3
+# Si en algún futuro cambian la BD, no subiremos la de SQLite de desarrollo local
+
+# Archivos temporales de caché de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Configuración de Editores Visuales (EJ: VSCode o PyCharm)
+.vscode/
+.idea/
+
+# Archivos de la nube o temporales de SO
+.DS_Store
+Thumbs.db
+
+# Almacenamiento local de archivos estáticos o media (fotos bajadas por el bot)
+media/
+staticfiles/
