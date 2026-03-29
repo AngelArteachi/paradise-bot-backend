@@ -22,6 +22,8 @@ class Prospect(models.Model):
         return f"{self.name} - {self.phone}"
 
 class BotSetting(models.Model):
+    user = models.OneToOneField('User', on_delete=models.CASCADE, related_name='bot_setting', null=True, blank=True)
+    
     # Telegram Settings
     bot_token = models.CharField(max_length=255, blank=True, default="", help_text="Unique token provided by @BotFather")
     assistant_name = models.CharField(max_length=255, blank=True, default="", help_text="Display name for your chatbot")
