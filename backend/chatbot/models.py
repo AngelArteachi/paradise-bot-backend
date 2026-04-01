@@ -23,7 +23,7 @@ class Prospect(models.Model):
 
 class BotSetting(models.Model):
     user = models.OneToOneField('User', on_delete=models.CASCADE, related_name='bot_setting', null=True, blank=True)
-    is_active = models.BooleanField(default=False, help_text="Enable or disable the bot for this user")
+    
     
     # Telegram Settings
     bot_token = models.CharField(max_length=255, blank=True, default="", help_text="Unique token provided by @BotFather")

@@ -57,7 +57,7 @@ def settings_view(request):
             allowed_fields = [
                 "assistant_name", "temperature", "emojis_enabled", 
                 "conversation_tone", "welcome_message", "system_instructions",
-                "bot_token", "openai_api_key", "ai_model", "max_tokens", "is_active"
+                "bot_token", "openai_api_key", "ai_model", "max_tokens"
             ]
             for key in allowed_fields:
                 if key in body:
