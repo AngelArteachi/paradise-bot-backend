@@ -232,7 +232,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             # Descargar archivo localmente a Django
             import io
-            import os
             from django.core.files.base import ContentFile
             
             out = io.BytesIO()
@@ -281,7 +280,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tg_file = await context.bot.get_file(file_id)
             
             import io
-            import os
             from django.core.files.base import ContentFile
             
             out = io.BytesIO()
