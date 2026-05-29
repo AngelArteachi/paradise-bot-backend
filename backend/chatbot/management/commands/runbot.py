@@ -32,11 +32,11 @@ STRICT GUARDRAILS & VALIDATION:
 1. ONLY discuss travel/tours: You MUST politely decline to discuss any off-topic subjects outside Paradise Tour Travel Agency.
 2. Data Validation: Verify data format. Phones must be digits of reasonable length. Emails must contain '@'. Names must not be obvious fake gibberish (e.g. 'asdf'). Decline fake data gracefully.
 3. INE Photo Enforcement: The user MUST upload an actual photo file. Do NOT accept text claims like "here is my ID". You can only proceed if the system explicitly tells you "[El usuario envió una foto de su ID/INE válida]".
-4. Finish Conversation: You MUST call the `mark_conversation_finished` tool as soon as the booking flow is complete to shut off automated reminders.
+4. Finish Conversation: Once you have successfully collected and saved the booking details, inform the user that a human advisor will contact them shortly to define their booking/options. Ask the user if they need help with anything else (e.g. "¿Necesita que le apoyemos con algo más?"). You MUST call the `mark_conversation_finished` tool ONLY when the user confirms they do not need any further assistance.
 
 BUSINESS RULES:
 - Services Offered: If the user asks about the services offered, you MUST respond exactly: "Ofrecemos paquetes de viaje todo incluído al caribe, organizamos grupos, traslados, transporte, circuitos internacionales y cruceros contamos con más de 5 mil hoteles en todo el mundo".
-- Anticipation Payment Notification: When the conversation is ending, you MUST explicitly inform the customer that an advance payment (anticipo) will be required to confirm the reservation, and a human advisor will detail it shortly.
+- Human Advisor Handover: Once all details are collected, inform the user that their data was successfully registered and a human advisor will contact them shortly to coordinate the booking details and define options. Do NOT mention any advance or anticipation payment at this stage, as the reservation specs have not been detailed.
 - Office Hours & Closure: Mon-Fri 10am-2pm and 4pm-6pm, Sat 10am-1pm. Sundays closed. Calculate mentally if the current time matches human hours. If outside these hours, you MUST inform them that their data was received securely and an advisor will contact them in the next available operating block.
 
 Use modern emojis to maintain a professional yet warm interaction (e.g., 🌊, 🏨, ✅). Always highlight the trust, safety, and exclusivity of our agency.
@@ -68,7 +68,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "mark_conversation_finished",
-            "description": "CRITICAL: You MUST call this function IMMEDIATELY in the same response where you confirm the booking data is fully registered and you inform the user about the advance payment. If you don't call this, the user will be annoyed by bugged reminders.",
+            "description": "Call this function ONLY when the user explicitly indicates they do not need help with anything else, to close the conversation flow.",
             "parameters": {
                 "type": "object",
                 "properties": {}
@@ -105,7 +105,7 @@ async def call_save_prospect(telegram_id, args):
             prospect.passengers_adult is not None
         )
         if is_complete:
-            return "Info has been securely saved. The prospect profile is now 100% COMPLETE. YOU MUST NOW CALL mark_conversation_finished IMMEDIATELY to close the flow."
+            return "Info has been securely saved in the database. The prospect profile is now complete. Inform the user a human advisor will contact them shortly, and ask if they need help with anything else. Do NOT call mark_conversation_finished yet; only call it if they explicitly say they do not need further help."
         return "Info has been securely saved in the database."
     except Exception as e:
         return f"Validation error at backend. Tell the user EXACTLY which field was rejected and gracefully ask them for it correctly formatted: {str(e)}"
