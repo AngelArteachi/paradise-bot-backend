@@ -25,7 +25,7 @@ CRITICAL LANGUAGE RULE: You MUST always respond in the exact language the user i
 Your goal is to confidently collect prospect information across TWO STRICT PHASES.
 GOLDEN RULES FOR DATA COLLECTION:
 - PHASE 1 (Client Info): You must FIRST collect Name, Phone, Email, and ask for a photo of their ID (INE or passport).
-- PHASE 2 (Booking Specs): ONLY AFTER you have successfully collected ALL Phase 1 data, you will ask for their booking preferences: Dates, Total nights, and Passengers (explicitly asking how many ADULTS and how many CHILDREN).
+- PHASE 2 (Booking Specs): ONLY AFTER you have successfully collected ALL Phase 1 data, you will ask for their booking preferences: Destination, Dates, Total nights, and Passengers (explicitly asking how many ADULTS and how many CHILDREN).
 DO NOT ask for Phase 2 information if Phase 1 is incomplete. DO NOT ask for everything at once. Keep it conversational but persuasive.
 
 STRICT GUARDRAILS & VALIDATION:
@@ -57,6 +57,7 @@ tools = [
                     "email": {"type": "string"},
                     "dates": {"type": "string"},
                     "nights": {"type": "string"},
+                    "destination": {"type": "string", "description": "The travel destination of interest"},
                     "passengers_adult": {"type": "integer"},
                     "passengers_child": {"type": "integer"}
                 }
@@ -86,13 +87,23 @@ async def call_save_prospect(telegram_id, args):
         if 'email' in args: prospect.email = args['email']
         if 'dates' in args: prospect.dates = args['dates']
         if 'nights' in args: prospect.nights = str(args['nights'])
+        if 'destination' in args: prospect.destination = args['destination']
         if 'passengers_adult' in args: prospect.passengers_adult = args['passengers_adult']
         if 'passengers_child' in args: prospect.passengers_child = args['passengers_child']
         
         await sync_to_async(prospect.full_clean)()
         await sync_to_async(prospect.save)()
         
-        is_complete = bool(prospect.name and prospect.phone and prospect.email and prospect.ine_file_id and prospect.dates and prospect.nights and prospect.passengers_adult is not None)
+        is_complete = bool(
+            prospect.name and 
+            prospect.phone and 
+            prospect.email and 
+            (prospect.ine_file_id or prospect.ine_file) and 
+            prospect.destination and 
+            prospect.dates and 
+            prospect.nights and 
+            prospect.passengers_adult is not None
+        )
         if is_complete:
             return "Info has been securely saved. The prospect profile is now 100% COMPLETE. YOU MUST NOW CALL mark_conversation_finished IMMEDIATELY to close the flow."
         return "Info has been securely saved in the database."
@@ -213,12 +224,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file_id = update.message.photo[-1].file_id
         prospect, _ = await sync_to_async(Prospect.objects.get_or_create)(telegram_id=str(update.message.from_user.id))
         prospect.ine_file_id = file_id
-        await sync_to_async(prospect.save)()
         
         try:
             # Obtener el archivo desde los servidores de Telegram
             tg_file = await context.bot.get_file(file_id)
             img_url = tg_file.file_path
+            
+            # Descargar archivo localmente a Django
+            import io
+            import os
+            from django.core.files.base import ContentFile
+            
+            out = io.BytesIO()
+            await tg_file.download_to_memory(out)
+            out.seek(0)
+            filename = os.path.basename(tg_file.file_path) if tg_file.file_path else f"ine_{update.message.from_user.id}.jpg"
+            
+            def save_prospect_file(p, fname, data):
+                p.ine_file.save(fname, ContentFile(data), save=True)
+            await sync_to_async(save_prospect_file)(prospect, filename, out.read())
             
             # Usamos explícitamente gpt-4o-mini con capacidades visuales para leer el INE y validar
             ocr_response = await client.chat.completions.create(
@@ -245,10 +269,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 user_text = f"[El usuario envió una foto de su ID/INE válida]. Datos extraídos: {extracted_text}. {caption}"
         except Exception as e:
-            print(f"Vision OCR Error: {e}")
+            print(f"Vision OCR/Download Error: {e}")
             user_text = f"[El usuario envió una foto de su ID/INE] {update.message.caption or ''}"
             
     elif update.message.document:
+        file_id = update.message.document.file_id
+        prospect, _ = await sync_to_async(Prospect.objects.get_or_create)(telegram_id=str(update.message.from_user.id))
+        prospect.ine_file_id = file_id
+        
+        try:
+            tg_file = await context.bot.get_file(file_id)
+            
+            import io
+            import os
+            from django.core.files.base import ContentFile
+            
+            out = io.BytesIO()
+            await tg_file.download_to_memory(out)
+            out.seek(0)
+            filename = update.message.document.file_name or os.path.basename(tg_file.file_path) or f"doc_{update.message.from_user.id}"
+            
+            def save_prospect_file(p, fname, data):
+                p.ine_file.save(fname, ContentFile(data), save=True)
+            await sync_to_async(save_prospect_file)(prospect, filename, out.read())
+        except Exception as e:
+            print(f"Document download error: {e}")
+            
         user_text = f"[El usuario envió un documento] {update.message.caption or ''}"
 
     if not user_text.strip():

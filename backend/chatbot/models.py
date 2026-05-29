@@ -14,6 +14,8 @@ class Prospect(models.Model):
     ine_file_id = models.CharField(max_length=200, blank=True, default="")
     dates = models.CharField(max_length=200, blank=True, default="")
     nights = models.CharField(max_length=50, blank=True, default="")
+    destination = models.CharField(max_length=255, blank=True, default="", verbose_name="Destino de interés")
+    ine_file = models.FileField(upload_to='ines/', blank=True, null=True, verbose_name="Archivo de Identificación")
     passengers_adult = models.IntegerField(validators=[MinValueValidator(0), MaxValueValidator(30)], blank=True, null=True)
     passengers_child = models.IntegerField(validators=[MinValueValidator(0), MaxValueValidator(30)], blank=True, null=True, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
