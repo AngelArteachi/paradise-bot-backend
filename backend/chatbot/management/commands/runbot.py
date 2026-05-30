@@ -25,6 +25,7 @@ from telegram.ext import (
     filters,
     ContextTypes
 )
+from telegram.constants import ChatAction
 
 from chatbot.models import BotSetting, Prospect
 
@@ -157,6 +158,8 @@ async def trigger_reengagement(context: ContextTypes.DEFAULT_TYPE):
             "content": prompt_text
         })
         
+        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+        
         response = await client.chat.completions.create(
             model=ai_model,
             messages=user_data['history'],
@@ -178,6 +181,10 @@ async def trigger_reengagement(context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
     
+    text_lower = (update.message.text or "").strip().lower()
+    if text_lower in ['/start', '/clear']:
+        context.user_data.clear()
+        
     # Check job_queue exists
     if context.job_queue:
         current_jobs = context.job_queue.get_jobs_by_name(str(chat_id))
@@ -202,10 +209,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     temperature = setting.temperature if setting and setting.temperature else 0.7
     max_tokens = setting.max_tokens if setting and setting.max_tokens else 500
     base_sys_prompt = setting.system_instructions if setting and setting.system_instructions else DEFAULT_SYSTEM_PROMPT
+    
+    tone = setting.conversation_tone if setting and setting.conversation_tone else "Amigable"
+    use_emojis = setting.emojis_enabled if setting is not None else True
+    assistant_name = setting.assistant_name if setting and setting.assistant_name else "Asistente Paradise"
 
     import datetime
     current_time = datetime.datetime.now().strftime("CURRENT LOCAL TIME: %A, %H:%M. Use this to determine if we are currently inside or outside human office hours.")
-    sys_prompt = f"{base_sys_prompt}\n\n[SYSTEM CLOCK] {current_time}"
+    
+    emoji_instruction = "You MUST use modern emojis naturally in your responses to maintain an engaging interaction." if use_emojis else "CRITICAL RULE: DO NOT use ANY emojis in your responses. Your responses MUST be text only."
+    tone_instruction = f"CRITICAL RULE: Your conversation tone and personality MUST BE: {tone}."
+    name_instruction = f"CRITICAL RULE: Your name is '{assistant_name}'. Introduce yourself with this name if appropriate, and always stay in character."
+    
+    sys_prompt = f"{base_sys_prompt}\n\n[SYSTEM CLOCK] {current_time}\n\n[PERSONALITY & BEHAVIOR]\n{name_instruction}\n{tone_instruction}\n{emoji_instruction}"
 
     client = AsyncOpenAI(api_key=api_key)
 
@@ -220,10 +236,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             welcome_msg = setting.welcome_message if setting and setting.welcome_message else "¡Hola! 🌴 Gracias por comunicarte con Paradise Tour Travel Agency ¿Cómo podemos ayudarle?"
             
+        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+        import asyncio
+        await asyncio.sleep(1.5)
+            
         await update.message.reply_text(welcome_msg)
         context.user_data['history'].append({"role": "assistant", "content": welcome_msg})
         
-        if text_lower in ['/start', 'hola', 'hi', 'hello', 'buenas', 'buenos dias', 'buenas tardes', 'hey']:
+        if text_lower in ['/start', '/clear', 'hola', 'hi', 'hello', 'buenas', 'buenos dias', 'buenas tardes', 'hey']:
             if context.job_queue:
                 context.job_queue.run_once(trigger_reengagement, 900, chat_id=chat_id, name=str(chat_id), data=context.user_data)
             else:
@@ -315,6 +335,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['history'].append({"role": "user", "content": user_text})
 
     try:
+        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+        
         response = await client.chat.completions.create(
             model=ai_model,
             messages=context.user_data['history'],
@@ -360,6 +382,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "content": function_response
                 })
             
+            await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+            
             second_response = await client.chat.completions.create(
                 model=ai_model,
                 messages=context.user_data['history']
@@ -389,12 +413,28 @@ class Command(BaseCommand):
     help = 'Run the Telegram Bot'
 
     def handle(self, *args, **options):
+        import time
+        from telegram.ext import CommandHandler
         token = os.getenv("TELEGRAM_TOKEN")
-        self.stdout.write(self.style.SUCCESS("Iniciando Bot Paradise Tour (GPT-3.5 Auto-Reenganche)..."))
         
-        app = ApplicationBuilder().token(token).build()
+        while True:
+            try:
+                self.stdout.write(self.style.SUCCESS("Iniciando Bot Paradise Tour (GPT-3.5 Auto-Reenganche)..."))
+                app = ApplicationBuilder().token(token).build()
 
-        app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))
-        
-        self.stdout.write(self.style.SUCCESS("Bot escuchando a Telegram. Pulsa Ctrl+C para detener..."))
-        app.run_polling()
+                app.add_handler(CommandHandler("start", handle_message))
+                app.add_handler(CommandHandler("clear", handle_message))
+                app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))
+                
+                self.stdout.write(self.style.SUCCESS("Bot escuchando a Telegram. Pulsa Ctrl+C para detener..."))
+                app.run_polling()
+                
+                # Si llega aquí normalmente, es porque se detuvo con elegancia (ej. Ctrl+C en algunas versiones)
+                break
+                
+            except KeyboardInterrupt:
+                self.stdout.write(self.style.WARNING("Detenido manualmente por el usuario (Ctrl+C)."))
+                break
+            except Exception as e:
+                self.stdout.write(self.style.ERROR(f"Error crítico en el bot: {e}. Reiniciando en 5 segundos..."))
+                time.sleep(5)
