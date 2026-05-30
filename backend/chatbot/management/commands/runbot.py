@@ -1,8 +1,21 @@
 import os
 import json
+import ssl
 from asgiref.sync import sync_to_async
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
+
+# Monkeypatch SSL default context to bypass self-signed certificate issues in local environments
+try:
+    orig_create_default_context = ssl.create_default_context
+    def patch_create_default_context(*args, **kwargs):
+        context = orig_create_default_context(*args, **kwargs)
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        return context
+    ssl.create_default_context = patch_create_default_context
+except Exception as e:
+    print("Warning: Could not patch SSL context:", e)
 
 from django.core.management.base import BaseCommand
 from telegram import Update
