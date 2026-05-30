@@ -20,6 +20,20 @@ class Prospect(models.Model):
     passengers_child = models.IntegerField(validators=[MinValueValidator(0), MaxValueValidator(30)], blank=True, null=True, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     
+    def clean(self):
+        super().clean()
+        if self.destination:
+            dest_lower = self.destination.lower()
+            caribbean_keywords = [
+                'cancun', 'cancún', 'riviera', 'cozumel', 'punta cana', 'cuba', 'bahamas', 
+                'jamaica', 'puerto rico', 'caribe', 'tulum', 'tulúm', 'playa del carmen', 
+                'isla mujeres', 'bacalar', 'aruba', 'curazao', 'curacao', 'dominicana', 
+                'santo domingo', 'barbados', 'cayman', 'caimán', 'saint martin', 'san martin'
+            ]
+            is_caribbean = any(k in dest_lower for k in caribbean_keywords)
+            if not is_caribbean:
+                raise ValidationError({'destination': "Solo ofrecemos viajes a destinos del Caribe."})
+
     def __str__(self):
         return f"{self.name} - {self.phone}"
 
