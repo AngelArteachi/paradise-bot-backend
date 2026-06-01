@@ -18,6 +18,7 @@ class Prospect(models.Model):
     ine_file = models.FileField(upload_to='ines/', blank=True, null=True, verbose_name="Archivo de Identificación")
     passengers_adult = models.IntegerField(validators=[MinValueValidator(0), MaxValueValidator(30)], blank=True, null=True)
     passengers_child = models.IntegerField(validators=[MinValueValidator(0), MaxValueValidator(30)], blank=True, null=True, default=0)
+    status = models.IntegerField(default=1, validators=[MinValueValidator(0), MaxValueValidator(1)])
     created_at = models.DateTimeField(auto_now_add=True)
     
     def clean(self):
