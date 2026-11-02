@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DEBUG: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -r ../requirements.txt
+      - name: Migrations are up to date
+        run: python manage.py makemigrations --check --dry-run
+      - run: python manage.py test chatbot
+      - name: Production settings pass Django's deployment checks
+        env:
+          DEBUG: "false"
+          SECRET_KEY: ci-only-not-a-real-secret-value-for-the-deploy-check-1234567890
+          ALLOWED_HOSTS: api.example.com
+          SECURE_SSL_REDIRECT: "true"
+          SECURE_HSTS_SECONDS: "31536000"
+        run: python manage.py check --deploy --fail-level ERROR
