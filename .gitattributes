@@ -1,2 +1,3 @@
-*.bat text eol=crlf
 * text=auto eol=lf
+# cmd.exe needs CRLF line endings.
+*.bat text eol=crlf
