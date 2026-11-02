@@ -5,3 +5,6 @@ __pycache__/
 .env
 .vscode/
 .idea/
+.local/
+docker-compose.override.yml
+.claude/

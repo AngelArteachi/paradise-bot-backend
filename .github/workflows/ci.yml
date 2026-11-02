@@ -31,3 +31,10 @@ jobs:
           SECURE_SSL_REDIRECT: "true"
           SECURE_HSTS_SECONDS: "31536000"
         run: python manage.py check --deploy --fail-level ERROR
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: The Docker image builds
+        run: docker build -t paradise-bot .

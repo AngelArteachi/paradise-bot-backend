@@ -1,0 +1,10 @@
+# Runs the model on an NVIDIA GPU (needs the NVIDIA Container Toolkit, included with Docker Desktop on WSL 2).
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

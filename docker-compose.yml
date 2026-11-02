@@ -1,0 +1,48 @@
+# The web demo with a local model: no API keys and no Telegram needed.
+#   docker compose up
+# then open http://localhost:8000. The first start downloads the model (about 4.7 GB).
+# With an NVIDIA GPU: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up
+
+services:
+  ollama:
+    image: ollama/ollama:0.12.6
+    environment:
+      # The prompt, the tools and the history do not fit in Ollama's default 4096 tokens for long chats.
+      OLLAMA_CONTEXT_LENGTH: "8192"
+    volumes:
+      - ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      retries: 20
+
+  model:
+    image: ollama/ollama:0.12.6
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    command: ["pull", "${AI_MODEL:-qwen2.5:7b}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DEBUG: "false"
+      SECRET_KEY: local-demo-only-change-me-for-anything-public-0123456789
+      ALLOWED_HOSTS: localhost,127.0.0.1
+      WEB_CHAT_ENABLED: "true"
+      AI_BASE_URL: http://ollama:11434/v1
+      AI_MODEL: ${AI_MODEL:-qwen2.5:7b}
+      BUSINESS_TIMEZONE: America/Cancun
+    volumes:
+      - data:/data
+    depends_on:
+      model:
+        condition: service_completed_successfully
+
+volumes:
+  ollama:
+  data:
