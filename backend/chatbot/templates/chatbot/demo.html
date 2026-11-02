@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paradise Tour · Asistente de ventas</title>
+<meta name="description" content="Demo en vivo del asistente de ventas de Paradise Tour: platica con el bot y mira cómo arma el prospecto para el asesor.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%230f766e'/%3E%3Ctext x='16' y='22' font-family='sans-serif' font-size='17' font-weight='700' fill='white' text-anchor='middle'%3EP%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f4f6f5;
+    --surface: #ffffff;
+    --surface-2: #eef2f1;
+    --text: #15201d;
+    --muted: #5d6b67;
+    --border: #dbe2e0;
+    --accent: #0f766e;
+    --accent-text: #ffffff;
+    --accent-soft: #d5efeb;
+    --bubble-user: #0f766e;
+    --bubble-user-text: #ffffff;
+    --bubble-bot: #eef2f1;
+    --ok: #15803d;
+    --warn-bg: #fff7e6;
+    --warn-text: #8a5a00;
+    --error: #b42318;
+    --shadow: 0 1px 2px rgba(16, 24, 22, .06), 0 8px 24px rgba(16, 24, 22, .06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1514;
+      --surface: #161e1c;
+      --surface-2: #1d2725;
+      --text: #e6eeec;
+      --muted: #94a3a0;
+      --border: #2a3633;
+      --accent: #2dd4bf;
+      --accent-text: #062a26;
+      --accent-soft: #123a35;
+      --bubble-user: #14b8a6;
+      --bubble-user-text: #062a26;
+      --bubble-bot: #1f2a28;
+      --ok: #4ade80;
+      --warn-bg: #2d2412;
+      --warn-text: #f5c56b;
+      --error: #f97066;
+      --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  a { color: var(--accent); }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 32px 16px 48px; }
+  header h1 { font-size: 28px; line-height: 1.2; margin: 0 0 8px; letter-spacing: -.01em; }
+  header p { margin: 0; color: var(--muted); max-width: 720px; }
+  .tag {
+    display: inline-block; font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--accent); background: var(--accent-soft); padding: 3px 10px; border-radius: 999px; margin-bottom: 12px;
+  }
+  .grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 20px; margin-top: 24px; }
+  @media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow);
+    min-width: 0;
+  }
+  .card-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
+  }
+  .card-head h2 { font-size: 15px; margin: 0; }
+  .card-head small { color: var(--muted); }
+  .bot-id { display: flex; align-items: center; gap: 10px; }
+  .avatar {
+    width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; flex: none;
+    background: var(--accent); color: var(--accent-text); font-weight: 700;
+  }
+  .ghost {
+    border: 1px solid var(--border); background: transparent; color: var(--text); border-radius: 10px;
+    padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer;
+  }
+  .ghost:hover { background: var(--surface-2); }
+  .chat { display: flex; flex-direction: column; height: 620px; max-height: 78vh; }
+  .messages { flex: 1; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 82%; padding: 9px 13px; border-radius: 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg.assistant { background: var(--bubble-bot); align-self: flex-start; border-bottom-left-radius: 4px; }
+  .msg.user { background: var(--bubble-user); color: var(--bubble-user-text); align-self: flex-end; border-bottom-right-radius: 4px; }
+  .msg.system { align-self: center; color: var(--muted); font-size: 13px; text-align: center; }
+  .msg.error { align-self: center; color: var(--error); font-size: 13px; text-align: center; }
+  .typing { display: inline-flex; gap: 4px; }
+  .typing span { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: blink 1.2s infinite; }
+  .typing span:nth-child(2) { animation-delay: .2s; }
+  .typing span:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+  .suggestions { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 18px 12px; }
+  .chip {
+    border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 999px;
+    padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer;
+  }
+  .chip:hover { border-color: var(--accent); }
+  .composer { border-top: 1px solid var(--border); padding: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .composer input {
+    flex: 1 1 220px; min-width: 0; border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+    border-radius: 12px; padding: 10px 14px; font: inherit;
+  }
+  .composer input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .primary {
+    border: 0; background: var(--accent); color: var(--accent-text); border-radius: 12px; padding: 10px 16px;
+    font: inherit; font-weight: 600; cursor: pointer;
+  }
+  .primary:disabled, .ghost:disabled, .chip:disabled { opacity: .5; cursor: default; }
+  .composer-foot { width: 100%; display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; padding: 0 4px; }
+  .panel-body { padding: 16px 18px; }
+  .progress { height: 8px; background: var(--surface-2); border-radius: 999px; overflow: hidden; margin: 6px 0 4px; }
+  .progress div { height: 100%; width: 0; background: var(--accent); transition: width .4s ease; }
+  .progress-label { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
+  .fields { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 2px; }
+  .fields li {
+    display: grid; grid-template-columns: 22px 110px minmax(0, 1fr); gap: 8px; align-items: baseline;
+    padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 14px;
+  }
+  .fields li:last-child { border-bottom: 0; }
+  .fields .check { color: var(--muted); }
+  .fields li.done .check { color: var(--ok); }
+  .fields .label { color: var(--muted); }
+  .fields .value { overflow-wrap: anywhere; }
+  .fields li.fresh .value { animation: flash 1.2s ease; }
+  @keyframes flash { from { background: var(--accent-soft); } to { background: transparent; } }
+  .stage {
+    font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px;
+    background: var(--surface-2); color: var(--muted);
+  }
+  .stage.complete { background: var(--accent-soft); color: var(--accent); }
+  .notice {
+    margin-top: 16px; padding: 12px 14px; border-radius: 12px; background: var(--warn-bg); color: var(--warn-text);
+    font-size: 13px; white-space: pre-wrap; display: none;
+  }
+  .notice strong { display: block; margin-bottom: 4px; }
+  .side { display: grid; gap: 20px; align-content: start; }
+  .how { padding: 16px 18px; font-size: 14px; }
+  .how h2 { font-size: 15px; margin: 0 0 8px; }
+  .how ul { margin: 0; padding-left: 18px; color: var(--muted); }
+  .how li { margin: 4px 0; }
+  footer { margin-top: 28px; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="tag">Demo en vivo</span>
+    <h1>Asistente de ventas de Paradise Tour</h1>
+    <p>
+      El mismo asistente que atiende a los viajeros en Telegram. Platica con él como si quisieras viajar al Caribe:
+      va guardando tus datos con validación y, cuando el perfil está completo, avisa al equipo de asesores.
+      Usa datos de ejemplo; todo se borra solo en 24 horas.
+    </p>
+  </header>
+
+  <div class="grid">
+    <section class="card chat" aria-label="Chat con el asistente">
+      <div class="card-head">
+        <div class="bot-id">
+          <div class="avatar" aria-hidden="true">P</div>
+          <div>
+            <h2>Asistente Paradise</h2>
+            <small id="status">conectando…</small>
+          </div>
+        </div>
+        <button class="ghost" id="reset" type="button">Nueva conversación</button>
+      </div>
+      <div class="messages" id="messages" aria-live="polite"></div>
+      <div class="suggestions" id="suggestions">
+        <button class="chip" type="button">Quiero ir a Cancún con mi familia</button>
+        <button class="chip" type="button">¿Qué servicios ofrecen?</button>
+        <button class="chip" type="button">¿Tienen viajes a Japón?</button>
+      </div>
+      <form class="composer" id="composer" autocomplete="off">
+        <input id="input" name="message" maxlength="{{ max_chars }}" placeholder="Escribe un mensaje…" aria-label="Mensaje">
+        <button class="ghost" id="sample-id" type="button" title="En Telegram el viajero manda la foto de su INE; aquí se simula">Enviar INE de ejemplo</button>
+        <button class="primary" id="send" type="submit">Enviar</button>
+        <div class="composer-foot">
+          <span>Respuestas generadas por un modelo de lenguaje.</span>
+          <span id="left"></span>
+        </div>
+      </form>
+    </section>
+
+    <div class="side">
+      <section class="card" aria-label="Panel del asesor">
+        <div class="card-head">
+          <h2>Lo que ve el asesor</h2>
+          <span class="stage" id="stage">Sin datos</span>
+        </div>
+        <div class="panel-body">
+          <div class="progress-label"><span>Perfil para cotizar</span><span id="progress-text">0 de 8</span></div>
+          <div class="progress"><div id="progress-bar"></div></div>
+          <ul class="fields" id="fields"></ul>
+          <div class="notice" id="notice"><strong>Aviso al grupo de asesores en Telegram</strong><span id="notice-text"></span></div>
+        </div>
+      </section>
+
+      <section class="card how">
+        <h2>Qué está pasando</h2>
+        <ul>
+          <li>El modelo no escribe en la base: llama a la herramienta <code>save_prospect_info</code> y el servidor valida cada dato antes de guardarlo.</li>
+          <li>Solo hay viajes al Caribe: un destino fuera se rechaza en la validación, no solo en el prompt.</li>
+          <li>La conversación vive en la base de datos, así que sobrevive reinicios. Recarga la página y sigue ahí.</li>
+          <li>En Telegram la INE es una foto real que revisa un modelo de visión; aquí se simula con un botón.</li>
+        </ul>
+      </section>
+    </div>
+  </div>
+
+  <footer>
+    Código en <a href="https://github.com/AngelArteachi/paradise-bot-backend">github.com/AngelArteachi/paradise-bot-backend</a>.
+  </footer>
+</div>
+
+<script>
+(() => {
+  const FIELDS = [
+    ['name', 'Nombre'],
+    ['phone', 'Teléfono'],
+    ['email', 'Correo'],
+    ['has_id_document', 'INE'],
+    ['destination', 'Destino'],
+    ['dates', 'Fechas'],
+    ['nights', 'Noches'],
+    ['passengers', 'Pasajeros'],
+  ];
+  const STORAGE_KEY = 'paradise-demo-session';
+  const $ = (id) => document.getElementById(id);
+  const messagesEl = $('messages');
+  const input = $('input');
+  let session = null;
+  let busy = false;
+  let previous = {};
+
+  function storage(action, value) {
+    try {
+      if (action === 'get') return localStorage.getItem(STORAGE_KEY);
+      if (action === 'set') localStorage.setItem(STORAGE_KEY, value);
+      if (action === 'clear') localStorage.removeItem(STORAGE_KEY);
+    } catch (e) { /* private mode: the session just won't survive a reload */ }
+    return null;
+  }
+
+  function bubble(role, text) {
+    const el = document.createElement('div');
+    el.className = 'msg ' + role;
+    el.textContent = text;
+    messagesEl.appendChild(el);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return el;
+  }
+
+  function typing() {
+    const el = document.createElement('div');
+    el.className = 'msg assistant';
+    el.innerHTML = '<span class="typing" aria-label="escribiendo"><span></span><span></span><span></span></span>';
+    messagesEl.appendChild(el);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return el;
+  }
+
+  function valueOf(prospect, key) {
+    if (!prospect) return '';
+    if (key === 'has_id_document') return prospect.has_id_document ? 'Recibida' : '';
+    if (key === 'passengers') {
+      if (prospect.passengers_adult == null) return '';
+      const kids = prospect.passengers_child || 0;
+      return prospect.passengers_adult + ' adulto(s)' + (kids ? ' y ' + kids + ' menor(es)' : '');
+    }
+    return prospect[key] || '';
+  }
+
+  function renderProspect(prospect) {
+    const list = $('fields');
+    list.innerHTML = '';
+    let done = 0;
+    for (const [key, label] of FIELDS) {
+      const value = valueOf(prospect, key);
+      const li = document.createElement('li');
+      if (value) { li.classList.add('done'); done += 1; }
+      if (value && previous[key] !== value) li.classList.add('fresh');
+      li.innerHTML = '<span class="check" aria-hidden="true"></span><span class="label"></span><span class="value"></span>';
+      li.querySelector('.check').textContent = value ? '✓' : '○';
+      li.querySelector('.label').textContent = label;
+      li.querySelector('.value').textContent = value || '—';
+      list.appendChild(li);
+      previous[key] = value;
+    }
+    $('progress-text').textContent = done + ' de ' + FIELDS.length;
+    $('progress-bar').style.width = (done / FIELDS.length * 100) + '%';
+    const stage = $('stage');
+    if (!prospect) { stage.textContent = 'Sin datos'; stage.className = 'stage'; return; }
+    stage.textContent = prospect.is_complete ? 'Listo para cotizar' : prospect.stage_label;
+    stage.className = 'stage' + (prospect.is_complete ? ' complete' : '');
+  }
+
+  function setBusy(value) {
+    busy = value;
+    for (const el of document.querySelectorAll('#send, #sample-id, .chip')) el.disabled = value;
+    $('status').textContent = value ? 'escribiendo…' : 'en línea';
+  }
+
+  function render(state) {
+    session = state.session;
+    storage('set', session);
+    messagesEl.innerHTML = '';
+    for (const message of state.messages) bubble(message.role, message.content);
+    renderProspect(state.prospect);
+    $('left').textContent = state.messages_left + ' mensajes restantes';
+    $('suggestions').style.display = state.messages.length > 1 ? 'none' : '';
+    if (state.finished) bubble('system', 'Conversación terminada. Puedes empezar una nueva.');
+  }
+
+  async function api(path, options) {
+    const response = await fetch(path, options);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw Object.assign(new Error(data.error || 'No se pudo conectar con el servidor.'), { status: response.status });
+    return data;
+  }
+
+  async function start() {
+    previous = {};
+    $('notice').style.display = 'none';
+    render(await api('/api/chat/', { method: 'POST' }));
+    $('status').textContent = 'en línea';
+  }
+
+  async function restore() {
+    const saved = storage('get');
+    if (!saved) return start();
+    try {
+      render(await api('/api/chat/state/?session=' + encodeURIComponent(saved)));
+      $('status').textContent = 'en línea';
+    } catch (error) {
+      storage('clear');
+      return start();
+    }
+  }
+
+  async function send(body, shown) {
+    if (busy || !session) return;
+    setBusy(true);
+    bubble('user', shown);
+    $('suggestions').style.display = 'none';
+    const dots = typing();
+    try {
+      const state = await api('/api/chat/messages/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session, ...body }),
+      });
+      render(state);
+      if (state.advisor_notification) {
+        $('notice-text').textContent = state.advisor_notification;
+        $('notice').style.display = 'block';
+      }
+    } catch (error) {
+      dots.remove();
+      bubble('error', error.message);
+      if (error.status === 404) storage('clear');
+    } finally {
+      dots.remove();
+      setBusy(false);
+      input.focus();
+    }
+  }
+
+  $('composer').addEventListener('submit', (event) => {
+    event.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    send({ message: text }, text);
+  });
+  $('sample-id').addEventListener('click', () => send({ sample_id: true }, '📎 INE de ejemplo'));
+  for (const chip of document.querySelectorAll('.chip')) {
+    chip.addEventListener('click', () => send({ message: chip.textContent }, chip.textContent));
+  }
+  $('reset').addEventListener('click', () => { if (!busy) { storage('clear'); start().catch(showFatal); } });
+
+  function showFatal(error) {
+    $('status').textContent = 'sin conexión';
+    bubble('error', error.message);
+  }
+
+  renderProspect(null);
+  restore().catch(showFatal);
+})();
+</script>
+</body>
+</html>

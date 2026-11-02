@@ -1,0 +1,10 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.env
+.vscode/
+.idea/
+.local/
+docker-compose.override.yml
+.claude/

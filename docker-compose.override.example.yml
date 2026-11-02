@@ -1,0 +1,16 @@
+# Copy to docker-compose.override.yml (git-ignored) if the build or the model
+# download fail with certificate errors because a proxy or antivirus inspects
+# HTTPS traffic. Put that tool's public root certificate (PEM) at .local/extra-ca.pem.
+services:
+  web:
+    build:
+      secrets: [extra_ca]
+  model:
+    environment:
+      SSL_CERT_DIR: /etc/ssl/certs:/extra-ca
+    volumes:
+      - ./.local:/extra-ca:ro
+
+secrets:
+  extra_ca:
+    file: ./.local/extra-ca.pem

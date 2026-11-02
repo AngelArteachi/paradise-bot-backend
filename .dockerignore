@@ -1,0 +1,8 @@
+.git
+.github
+.venv
+.local
+**/__pycache__
+backend/.env
+backend/db.sqlite3
+backend/media
