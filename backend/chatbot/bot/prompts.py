@@ -1,5 +1,7 @@
 from datetime import datetime
 
+from chatbot.models import Channel
+
 from . import office_hours
 from .config import BotConfig
 
@@ -29,7 +31,14 @@ Always highlight the trust, safety, and exclusivity of our agency.
 """.strip()
 
 
-def system_prompt(config: BotConfig, now: datetime) -> str:
+WEB_DEMO_RULES = [
+    'This chat is the public web demo of the assistant, not Telegram. Visitors cannot upload files here: when you need '
+    "the ID, ask them to press the 'Enviar INE de ejemplo' button below the chat. Never ask for a real ID photo.",
+    'Visitors may use made-up example data. Validate it exactly as you would real data.',
+]
+
+
+def system_prompt(config: BotConfig, now: datetime, channel: str = Channel.TELEGRAM) -> str:
     """The base instructions plus the facts and settings that change between turns."""
     base = config.system_instructions.strip() or DEFAULT_SYSTEM_PROMPT
     rules = [
@@ -39,7 +48,13 @@ def system_prompt(config: BotConfig, now: datetime) -> str:
         else 'Do NOT use ANY emojis. Text only.',
         # Replies go to Telegram as plain text; Markdown asterisks would show up literally.
         'Write plain text: no Markdown, no asterisks for bold, no headings.',
+        # Small models tend to say "I saved it" without calling the tool.
+        'Every time the user gives any piece of their data (name, phone, email, destination, dates, nights or '
+        'passengers), call save_prospect_info with it BEFORE you reply. Nothing is saved unless you call the tool, '
+        'so never say you saved something you did not send to it.',
     ]
+    if channel == Channel.WEB:
+        rules.extend(WEB_DEMO_RULES)
     if config.privacy_notice_url:
         rules.append(
             'Before asking for the first piece of personal data (name, phone, email or ID), share our privacy notice '

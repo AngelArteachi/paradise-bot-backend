@@ -8,8 +8,13 @@ from .views import (
     prospects_view,
     settings_view,
 )
+from .web_chat import chat_message_view, chat_start_view, chat_state_view, demo_page
 
 urlpatterns = [
+    path('', demo_page, name='demo'),
+    path('api/chat/', chat_start_view, name='chat_start'),
+    path('api/chat/state/', chat_state_view, name='chat_state'),
+    path('api/chat/messages/', chat_message_view, name='chat_message'),
     path('api/login/', login_view, name='login'),
     path('api/settings/', settings_view, name='settings'),
     path('api/prospects/', prospects_view, name='prospects'),

@@ -54,7 +54,7 @@ class TelegramHandlerTest(TestCase):
 
     def use_model(self, *responses):
         fake = FakeOpenAI(*responses)
-        patcher = mock.patch('chatbot.bot.telegram_app.AsyncOpenAI', return_value=fake)
+        patcher = mock.patch('chatbot.bot.ai.AsyncOpenAI', return_value=fake)
         patcher.start()
         self.addCleanup(patcher.stop)
         return fake
@@ -120,7 +120,7 @@ class ReengagementTest(TestCase):
     async def test_nudges_a_traveller_who_went_quiet(self):
         await self.quiet_conversation(minutes_ago=20)
         bot = FakeBot()
-        with self.at_noon(), mock.patch('chatbot.bot.telegram_app.AsyncOpenAI', return_value=FakeOpenAI(text('¿Sigues ahí?'))):
+        with self.at_noon(), mock.patch('chatbot.bot.ai.AsyncOpenAI', return_value=FakeOpenAI(text('¿Sigues ahí?'))):
             await telegram_app.reengage(context_for(bot))
         self.assertEqual(bot.sent, [(77, '¿Sigues ahí?')])
         conversation = await Conversation.objects.aget(telegram_id='77')
@@ -129,14 +129,14 @@ class ReengagementTest(TestCase):
 
     async def test_says_goodbye_after_three_nudges(self):
         await self.quiet_conversation(minutes_ago=20, attempts=3)
-        with self.at_noon(), mock.patch('chatbot.bot.telegram_app.AsyncOpenAI', return_value=FakeOpenAI(text('¡Hasta pronto!'))):
+        with self.at_noon(), mock.patch('chatbot.bot.ai.AsyncOpenAI', return_value=FakeOpenAI(text('¡Hasta pronto!'))):
             await telegram_app.reengage(context_for(FakeBot()))
         self.assertTrue((await Conversation.objects.aget(telegram_id='77')).is_finished)
 
     async def test_leaves_recent_conversations_and_nights_alone(self):
         await self.quiet_conversation(minutes_ago=5)
         bot = FakeBot()
-        with self.at_noon(), mock.patch('chatbot.bot.telegram_app.AsyncOpenAI', return_value=FakeOpenAI()):
+        with self.at_noon(), mock.patch('chatbot.bot.ai.AsyncOpenAI', return_value=FakeOpenAI()):
             await telegram_app.reengage(context_for(bot))
         night = datetime(2026, 11, 2, 23, 0, tzinfo=ZoneInfo('America/Cancun'))
         with mock.patch('chatbot.bot.telegram_app.timezone.localtime', return_value=night):

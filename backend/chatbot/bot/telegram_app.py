@@ -6,14 +6,13 @@ from datetime import timedelta
 
 from asgiref.sync import sync_to_async
 from django.utils import timezone
-from openai import AsyncOpenAI
 from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import Application, ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 
 from chatbot.models import Conversation, Prospect
 
-from . import identity, office_hours, prompts
+from . import ai, identity, office_hours, prompts
 from .assistant import Assistant
 from .config import BotConfig, load_config
 from .notify import advisor_summary
@@ -29,12 +28,8 @@ REENGAGE_NUDGES = 3  # then one farewell
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 
-def _client(context: ContextTypes.DEFAULT_TYPE, config: BotConfig) -> AsyncOpenAI:
-    """One OpenAI client per API key, so changing the key in the panel takes effect without a restart."""
-    clients = context.application.bot_data.setdefault('openai_clients', {})
-    if config.openai_api_key not in clients:
-        clients[config.openai_api_key] = AsyncOpenAI(api_key=config.openai_api_key)
-    return clients[config.openai_api_key]
+def _client(context: ContextTypes.DEFAULT_TYPE, config: BotConfig):
+    return ai.client_for(config, context.application.bot_data.setdefault('ai_clients', {}))
 
 
 def _conversation(telegram_id: str, chat_id: int) -> Conversation:
@@ -77,8 +72,8 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     lowered = text.lower()
 
     config = await sync_to_async(load_config)()
-    if not config.openai_api_key:
-        await message.reply_text('⚠️ Falta configurar la API key de OpenAI en el panel o en el archivo .env.')
+    if not config.ai_ready:
+        await message.reply_text('⚠️ Falta configurar el modelo de IA: una API key o AI_BASE_URL en el panel o en el archivo .env.')
         return
     client = _client(context, config)
 
@@ -127,13 +122,16 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     # Plain text: model output with unbalanced Markdown used to make Telegram reject the whole reply.
     await message.reply_text(turn.reply)
 
-    for prospect in turn.completed_prospects:
+    # Read back rather than trusting the tool: the ID can be the last missing piece, and it is stored outside it.
+    prospect = await Prospect.objects.filter(telegram_id=telegram_id).afirst()
+    if prospect and prospect.is_complete:
         await _notify_advisors(context, config, prospect)
 
 
 def _due_conversations(now) -> list[Conversation]:
     return list(
         Conversation.objects.filter(
+            channel=Conversation.Channel.TELEGRAM,
             is_finished=False,
             last_user_message_at__isnull=False,
             reengagement_attempts__lte=REENGAGE_NUDGES,
@@ -152,7 +150,7 @@ async def reengage(context: ContextTypes.DEFAULT_TYPE) -> None:
     if office_hours.is_quiet_time(now):
         return
     config = await sync_to_async(load_config)()
-    if not config.openai_api_key:
+    if not config.ai_ready:
         return
     assistant = Assistant(_client(context, config), config)
 

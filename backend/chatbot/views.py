@@ -33,7 +33,7 @@ EDITABLE_SETTINGS = (
 def _json_body(request) -> dict:
     try:
         body = json.loads(request.body or b'{}')
-    except json.JSONDecodeError as error:
+    except ValueError as error:  # also a body that is not UTF-8
         raise ValueError('El cuerpo de la petición no es JSON válido.') from error
     if not isinstance(body, dict):
         raise ValueError('Se esperaba un objeto JSON.')

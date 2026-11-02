@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
-from chatbot.models import Prospect
+from chatbot.models import Channel, Prospect
 
 SCHEMAS = [
     {
@@ -54,17 +54,19 @@ class ToolResult:
 @dataclass
 class ToolContext:
     telegram_id: str
+    channel: str = Channel.TELEGRAM
     results: list[ToolResult] = field(default_factory=list)
 
 
-def save_prospect_info(telegram_id: str, args: dict) -> ToolResult:
+def save_prospect_info(telegram_id: str, args: dict, channel: str = Channel.TELEGRAM) -> ToolResult:
     """
     Applies the fields the model extracted. The whole update is validated
     before anything is written, so one bad field (say, a destination outside
     the Caribbean) does not leave half a record behind.
     """
     with transaction.atomic():
-        prospect, _ = Prospect.objects.select_for_update().get_or_create(telegram_id=telegram_id)
+        prospect, _ = Prospect.objects.select_for_update().get_or_create(
+            telegram_id=telegram_id, defaults={'channel': channel})
         was_complete = prospect.is_complete
 
         for name in TEXT_FIELDS:
@@ -72,10 +74,12 @@ def save_prospect_info(telegram_id: str, args: dict) -> ToolResult:
                 setattr(prospect, name, str(args[name]).strip())
         if args.get('phone') not in (None, ''):
             prospect.phone = ''.join(ch for ch in str(args['phone']) if ch.isdigit() or ch == '+')
-        if args.get('nights') not in (None, ''):
+        # Models fill fields they do not know yet with 0; a trip has at least one night and one adult.
+        if args.get('nights') not in (None, '', 0, '0'):
             prospect.nights = str(args['nights']).strip()
         for name in ('passengers_adult', 'passengers_child'):
-            if args.get(name) is not None:
+            unknown = (None, '', 0, '0') if name == 'passengers_adult' else (None, '')
+            if args.get(name) not in unknown:
                 try:
                     setattr(prospect, name, int(args[name]))
                 except (TypeError, ValueError):
@@ -102,7 +106,7 @@ def save_prospect_info(telegram_id: str, args: dict) -> ToolResult:
 
 def run_tool(context: ToolContext, name: str, args: dict) -> ToolResult:
     if name == 'save_prospect_info':
-        result = save_prospect_info(context.telegram_id, args)
+        result = save_prospect_info(context.telegram_id, args, context.channel)
     elif name == 'mark_conversation_finished':
         result = ToolResult("Conversation marked as finished.", finished=True)
     else:

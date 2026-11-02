@@ -21,6 +21,9 @@ class FakeOpenAI:
         self.requests = []
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
 
+    async def close(self):
+        pass
+
     async def _create(self, **kwargs):
         self.requests.append(kwargs)
         if not self.responses:

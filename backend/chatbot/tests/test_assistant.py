@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from django.test import TestCase, override_settings
 
 from chatbot.bot import identity
-from chatbot.bot.assistant import FALLBACK_REPLY, MAX_TOOL_ROUNDS, Assistant, trim_history
+from chatbot.bot.assistant import FALLBACK_REPLY, MAX_TOOL_ROUNDS, SAVE_REMINDER, Assistant, trim_history
 from chatbot.bot.config import BotConfig
 from chatbot.bot.notify import advisor_summary
 from chatbot.bot.tools import save_prospect_info
@@ -18,7 +18,7 @@ from .fakes import FakeOpenAI, text, tool_call
 NOW = datetime(2026, 11, 2, 11, 0, tzinfo=ZoneInfo('America/Cancun'))
 
 CONFIG = BotConfig(
-    telegram_token='t', openai_api_key='k', model='gpt-4o-mini', vision_model='gpt-4o-mini', temperature=0.7,
+    telegram_token='t', ai_api_key='k', ai_base_url='', model='gpt-4o-mini', vision_model='gpt-4o-mini', temperature=0.7,
     max_tokens=500, assistant_name='Marina', tone='Amigable', emojis_enabled=False, welcome_message='¡Hola!',
     system_instructions='', advisor_chat_id='-100', privacy_notice_url='https://paradisetour.example/aviso',
 )
@@ -53,6 +53,11 @@ class SaveProspectToolTest(TestCase):
         result = save_prospect_info('42', {'passengers_adult': 'dos'})
         self.assertIn('whole number', result.message)
 
+    def test_zero_placeholders_are_not_answers(self):
+        save_prospect_info('42', {'name': 'Ana López', 'nights': 0, 'passengers_adult': 0, 'passengers_child': 0})
+        prospect = Prospect.objects.get(telegram_id='42')
+        self.assertEqual((prospect.nights, prospect.passengers_adult, prospect.passengers_child), ('', None, 0))
+
 
 class AssistantTest(TestCase):
     async def test_answers_without_tools(self):
@@ -69,6 +74,34 @@ class AssistantTest(TestCase):
         # The second request carries the tool result back to the model.
         roles = [m['role'] for m in client.requests[1]['messages']]
         self.assertEqual(roles, ['system', 'user', 'assistant', 'tool'])
+
+    async def test_a_tool_call_written_as_text_is_still_run(self):
+        written = text('Perfecto, Ana.\n\n{"name": "save_prospect_info", "arguments": {"name": "Ana López"}}')
+        client = FakeOpenAI(written, text('Gracias, Ana.'))
+        turn = await Assistant(client, CONFIG).respond('7', [], 'Me llamo Ana López', NOW)
+        self.assertEqual(turn.reply, 'Gracias, Ana.')
+        self.assertEqual(await Prospect.objects.filter(telegram_id='7', name='Ana López').acount(), 1)
+        self.assertEqual([m['role'] for m in client.requests[1]['messages']], ['system', 'user', 'assistant', 'tool'])
+
+    async def test_a_model_that_skips_saving_contact_data_is_reminded_once(self):
+        client = FakeOpenAI(text('¡Listo, lo guardé!'), tool_call('save_prospect_info', {'email': 'ana@example.com'}), text('Gracias.'))
+        turn = await Assistant(client, CONFIG).respond('7', [], 'Mi correo es ana@example.com', NOW)
+        self.assertEqual(turn.reply, 'Gracias.')
+        self.assertEqual(await Prospect.objects.filter(telegram_id='7', email='ana@example.com').acount(), 1)
+        self.assertEqual(client.requests[1]['messages'][-1]['content'], SAVE_REMINDER)
+        # The unsaved draft and the reminder stay out of the history.
+        self.assertNotIn('¡Listo, lo guardé!', [m.get('content') for m in turn.messages])
+
+    async def test_the_reminder_is_sent_at_most_once(self):
+        client = FakeOpenAI(text('Anotado.'), text('De acuerdo.'))
+        turn = await Assistant(client, CONFIG).respond('7', [], 'Mi teléfono es 998 123 4567', NOW)
+        self.assertEqual(turn.reply, 'De acuerdo.')
+        self.assertEqual(len(client.requests), 2)
+
+    async def test_json_that_is_not_a_tool_call_is_left_alone(self):
+        client = FakeOpenAI(text('Un ejemplo: {"name": "Ana"}'))
+        turn = await Assistant(client, CONFIG).respond('7', [], 'Hola', NOW)
+        self.assertEqual(turn.reply, 'Un ejemplo: {"name": "Ana"}')
 
     async def test_handles_several_tool_rounds(self):
         client = FakeOpenAI(

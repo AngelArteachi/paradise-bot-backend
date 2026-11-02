@@ -12,6 +12,11 @@ phone_regex = RegexValidator(regex=r'^\+?1?\d{9,15}$', message="Phone format mus
 email_regex = RegexValidator(regex=r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$', message="Formato de correo electrónico inválido.")
 
 
+class Channel(models.TextChoices):
+    TELEGRAM = 'telegram', 'Telegram'
+    WEB = 'web', 'Chat web (demo)'
+
+
 def id_document_path(instance, filename):
     """IDs are stored under a random name, so a file path never reveals or guesses a person."""
     suffix = Path(filename).suffix.lower()[:8] or '.jpg'
@@ -26,7 +31,9 @@ class Prospect(models.Model):
         WON = 'won', 'Reservó'
         LOST = 'lost', 'No reservó'
 
+    # Telegram user id, or a `web-...` id for the web chat.
     telegram_id = models.CharField(max_length=50, unique=True)
+    channel = models.CharField(max_length=20, choices=Channel.choices, default=Channel.TELEGRAM, verbose_name="Canal")
     language = models.CharField(max_length=10, default='es')
     name = models.CharField(max_length=200, blank=True, default="")
     phone = models.CharField(validators=[phone_regex], max_length=50, blank=True, default="")
@@ -69,12 +76,16 @@ class Prospect(models.Model):
 
 class Conversation(models.Model):
     """
-    One Telegram chat with the assistant. The message history lives here, not
-    in the bot's memory, so a restart or a redeploy does not make the
-    assistant forget what a traveller already said.
+    One chat with the assistant, on Telegram or on the web. The message
+    history lives here, not in the bot's memory, so a restart or a redeploy
+    does not make the assistant forget what a traveller already said.
     """
 
+    Channel = Channel
+
     telegram_id = models.CharField(max_length=50, unique=True)
+    channel = models.CharField(max_length=20, choices=Channel.choices, default=Channel.TELEGRAM)
+    # Telegram chat to write to; 0 for the web chat.
     chat_id = models.BigIntegerField()
     # OpenAI chat messages (user, assistant and tool turns); the system prompt is rebuilt on every turn.
     messages = models.JSONField(default=list, blank=True)

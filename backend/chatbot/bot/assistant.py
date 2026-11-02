@@ -2,10 +2,15 @@
 
 import json
 import logging
+import re
+import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from types import SimpleNamespace
 
 from asgiref.sync import sync_to_async
+
+from chatbot.models import Channel
 
 from .config import BotConfig
 from .prompts import system_prompt
@@ -19,6 +24,34 @@ MAX_TOOL_ROUNDS = 4
 HISTORY_LIMIT = 30
 
 FALLBACK_REPLY = 'Lo siento, tuve un problema para responder. ¿Me lo puedes repetir en un momento?'
+TOOL_NAMES = {schema['function']['name'] for schema in SCHEMAS}
+
+CONTACT_DATA = re.compile(r'[^\s@]+@[^\s@]+\.\w+|\d[\d\s().-]{6,}\d')
+SAVE_REMINDER = (
+    'The user just gave contact data and you answered without calling save_prospect_info, so nothing was saved. '
+    'Call save_prospect_info now with every piece of data from their last message.'
+)
+
+
+def inline_tool_calls(content: str | None) -> list:
+    """
+    Tool calls a model wrote as JSON in its reply instead of using the API,
+    which small open models (Qwen, Llama) sometimes do. Read them as real
+    calls, so the data is saved and the visitor never sees the JSON.
+    """
+    calls, decoder, index = [], json.JSONDecoder(), 0
+    text = content or ''
+    while (start := text.find('{', index)) != -1:
+        try:
+            value, end = decoder.raw_decode(text, start)
+        except json.JSONDecodeError:
+            index = start + 1
+            continue
+        index = end
+        if isinstance(value, dict) and value.get('name') in TOOL_NAMES and isinstance(value.get('arguments', {}), dict):
+            calls.append(SimpleNamespace(id=f'inline_{uuid.uuid4().hex[:12]}', function=SimpleNamespace(
+                name=value['name'], arguments=json.dumps(value.get('arguments', {})))))
+    return calls
 
 
 def trim_history(messages: list[dict], limit: int = HISTORY_LIMIT) -> list[dict]:
@@ -51,39 +84,49 @@ class Turn:
 
 
 class Assistant:
-    def __init__(self, client, config: BotConfig):
+    def __init__(self, client, config: BotConfig, channel: str = Channel.TELEGRAM):
         self.client = client
         self.config = config
+        self.channel = channel
 
     async def respond(self, telegram_id: str, history: list[dict], user_content: str, now: datetime) -> Turn:
         messages = [*history, {'role': 'user', 'content': user_content}]
-        context = ToolContext(telegram_id=telegram_id)
-        system = {'role': 'system', 'content': system_prompt(self.config, now)}
+        context = ToolContext(telegram_id=telegram_id, channel=self.channel)
+        system = {'role': 'system', 'content': system_prompt(self.config, now, self.channel)}
 
         reply = None
+        # A one-off reminder for a model that answers "saved!" without saving; never stored in the history.
+        reminder: list[dict] = []
+        may_remind = bool(CONTACT_DATA.search(user_content))
         for _round in range(MAX_TOOL_ROUNDS):
             response = await self.client.chat.completions.create(
                 model=self.config.model,
-                messages=[system, *messages],
+                messages=[system, *messages, *reminder],
                 temperature=self.config.temperature,
                 max_tokens=self.config.max_tokens,
                 tools=SCHEMAS,
                 tool_choice='auto',
             )
             message = response.choices[0].message
-            if not message.tool_calls:
+            tool_calls = message.tool_calls or inline_tool_calls(message.content)
+            reminder = []
+            if not tool_calls:
+                if may_remind and not context.results:
+                    may_remind = False
+                    reminder = [{'role': 'assistant', 'content': message.content or ''}, {'role': 'system', 'content': SAVE_REMINDER}]
+                    continue
                 reply = (message.content or '').strip()
                 break
 
             messages.append({
                 'role': 'assistant',
-                'content': message.content,
+                'content': message.content if message.tool_calls else None,
                 'tool_calls': [
                     {'id': call.id, 'type': 'function', 'function': {'name': call.function.name, 'arguments': call.function.arguments}}
-                    for call in message.tool_calls
+                    for call in tool_calls
                 ],
             })
-            for call in message.tool_calls:
+            for call in tool_calls:
                 try:
                     args = json.loads(call.function.arguments or '{}')
                 except json.JSONDecodeError:
@@ -102,7 +145,7 @@ class Assistant:
         response = await self.client.chat.completions.create(
             model=self.config.model,
             messages=[
-                {'role': 'system', 'content': system_prompt(self.config, now)},
+                {'role': 'system', 'content': system_prompt(self.config, now, self.channel)},
                 *history,
                 {'role': 'system', 'content': instruction},
             ],

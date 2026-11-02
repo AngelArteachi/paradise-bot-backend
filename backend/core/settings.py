@@ -111,6 +111,15 @@ CORS_ALLOWED_ORIGINS = env_list(
 # Sessions issued by /api/login/ stop working after this many seconds.
 PANEL_TOKEN_MAX_AGE = int(os.getenv('PANEL_TOKEN_MAX_AGE', str(12 * 60 * 60)))
 
+# Public web chat demo (chatbot.web_chat). On by default only in development.
+WEB_CHAT_ENABLED = env_bool('WEB_CHAT_ENABLED', DEBUG)
+WEB_CHAT_MAX_MESSAGES = int(os.getenv('WEB_CHAT_MAX_MESSAGES', '30'))  # per conversation
+WEB_CHAT_MAX_PER_IP_PER_HOUR = int(os.getenv('WEB_CHAT_MAX_PER_IP_PER_HOUR', '60'))
+WEB_CHAT_DAILY_LIMIT = int(os.getenv('WEB_CHAT_DAILY_LIMIT', '1000'))  # every visitor together
+WEB_CHAT_RETENTION_HOURS = int(os.getenv('WEB_CHAT_RETENTION_HOURS', '24'))
+# Proxies in front of the app that append to X-Forwarded-For (1 on Render, Fly or Railway).
+WEB_CHAT_PROXY_HOPS = int(os.getenv('WEB_CHAT_PROXY_HOPS', '0'))
+
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     SESSION_COOKIE_SECURE = True

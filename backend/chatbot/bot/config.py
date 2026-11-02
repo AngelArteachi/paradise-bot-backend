@@ -9,7 +9,9 @@ class BotConfig:
     """Effective configuration: the panel's settings first, then environment variables."""
 
     telegram_token: str
-    openai_api_key: str
+    ai_api_key: str
+    # Any OpenAI-compatible endpoint (Ollama, Groq, Gemini...). Empty means OpenAI itself.
+    ai_base_url: str
     model: str
     vision_model: str
     temperature: float
@@ -22,6 +24,11 @@ class BotConfig:
     advisor_chat_id: str
     privacy_notice_url: str
 
+    @property
+    def ai_ready(self) -> bool:
+        """OpenAI needs a key; a self-hosted endpoint such as Ollama only needs its URL."""
+        return bool(self.ai_api_key or self.ai_base_url)
+
 
 def load_config() -> BotConfig:
     setting = BotSetting.objects.order_by('-updated_at').first()
@@ -32,9 +39,10 @@ def load_config() -> BotConfig:
 
     return BotConfig(
         telegram_token=pick('bot_token', 'TELEGRAM_TOKEN'),
-        openai_api_key=pick('openai_api_key', 'OPENAI_API_KEY'),
-        model=pick('ai_model', 'OPENAI_MODEL', 'gpt-4o-mini'),
-        vision_model=os.getenv('OPENAI_VISION_MODEL', 'gpt-4o-mini'),
+        ai_api_key=pick('openai_api_key', 'AI_API_KEY') or os.getenv('OPENAI_API_KEY', ''),
+        ai_base_url=os.getenv('AI_BASE_URL', '').strip(),
+        model=os.getenv('AI_MODEL') or pick('ai_model', 'OPENAI_MODEL', 'gpt-4o-mini'),
+        vision_model=os.getenv('AI_VISION_MODEL') or os.getenv('OPENAI_VISION_MODEL', 'gpt-4o-mini'),
         temperature=setting.temperature if setting and setting.temperature is not None else 0.7,
         max_tokens=setting.max_tokens if setting and setting.max_tokens else 500,
         assistant_name=pick('assistant_name', 'ASSISTANT_NAME', 'Asistente Paradise'),
