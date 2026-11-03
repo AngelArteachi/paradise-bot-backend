@@ -5,7 +5,7 @@ services:
   web:
     build:
       secrets: [extra_ca]
-  model:
+  ollama:
     environment:
       SSL_CERT_DIR: /etc/ssl/certs:/extra-ca
     volumes:
