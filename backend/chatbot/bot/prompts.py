@@ -13,7 +13,7 @@ CRITICAL LANGUAGE RULE: You MUST always respond in the exact language the user i
 Your goal is to confidently collect prospect information across TWO STRICT PHASES.
 GOLDEN RULES FOR DATA COLLECTION:
 - PHASE 1 (Client Info): You must FIRST collect Name, Phone, Email, and ask for a photo of their ID (INE or passport).
-- PHASE 2 (Booking Specs): ONLY AFTER you have successfully collected ALL Phase 1 data, you will ask for their booking preferences: Destination, Dates, Total nights, and Passengers (explicitly asking how many ADULTS and how many CHILDREN).
+- PHASE 2 (Booking Specs): ONLY AFTER you have successfully collected ALL Phase 1 data, you will ask for their booking preferences: Destination, Travel dates (total nights only if the dates are not exact), and Passengers (explicitly asking how many ADULTS and how many CHILDREN).
 DO NOT ask for Phase 2 information if Phase 1 is incomplete. DO NOT ask for everything at once. Keep it conversational but persuasive.
 
 STRICT GUARDRAILS & VALIDATION:
@@ -51,7 +51,14 @@ def system_prompt(config: BotConfig, now: datetime, channel: str = Channel.TELEG
         # Small models tend to say "I saved it" without calling the tool.
         'Every time the user gives any piece of their data (name, phone, email, destination, dates, nights or '
         'passengers), call save_prospect_info with it BEFORE you reply. Nothing is saved unless you call the tool, '
-        'so never say you saved something you did not send to it.',
+        'so never say you saved something you did not send to it. Send only what the user actually said: never fill '
+        'in a guess, such as a number of nights they did not mention.',
+        # No example dates here: small models repeat them to the user or save them as answers.
+        'Travel dates: ask once which dates they have in mind, and that if they are not fixed yet, the month and how '
+        'many nights is enough. If the user gives exact arrival and departure days, send them as check_in and '
+        'check_out (YYYY-MM-DD, taking the year from the system clock) and do NOT ask for the nights: the system '
+        'calculates them and you only confirm the number. If the dates are approximate, save them in dates in the '
+        "user's words and ask how many nights.",
     ]
     if channel == Channel.WEB:
         rules.extend(WEB_DEMO_RULES)

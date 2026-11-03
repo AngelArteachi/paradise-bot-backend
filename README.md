@@ -80,10 +80,20 @@ Grupo de asesores:
 ```
 
 Los modelos chicos a veces dicen "ya guardé tus datos" sin llamar a la
-herramienta, o escriben la llamada como JSON dentro de la respuesta. El
-asistente cubre los dos casos: lee esas llamadas escritas como texto y, si el
-viajero dio un teléfono o un correo y no se guardó nada, le pide al modelo
-una vez que lo guarde antes de contestar.
+herramienta, escriben la llamada como JSON dentro de la respuesta, inventan
+datos o anuncian al asesor con el perfil a medias. El servidor no les cree:
+
+- Lee las llamadas escritas como texto. Si el viajero dio un dato y no se
+  guardó nada, le pide al modelo una vez que lo guarde antes de contestar.
+- Con fechas exactas, las noches las calcula el código y el modelo solo las
+  confirma. Con fechas aproximadas ("Semana Santa") se guardan tal cual y se
+  preguntan las noches.
+- Solo acepta noches y días que el viajero de verdad escribió.
+- Tras cada dato guardado le dice al modelo qué falta. Si el modelo anuncia
+  al asesor con el perfil incompleto, el servidor lo corrige.
+
+Con Ollama, el `docker-compose.yml` usa temperatura 0.2 (`AI_TEMPERATURE`):
+con el 0.7 del panel, el modelo de 7B inventa fechas.
 
 ## Cómo funciona
 

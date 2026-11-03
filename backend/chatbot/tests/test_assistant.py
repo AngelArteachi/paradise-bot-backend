@@ -1,10 +1,11 @@
 import base64
 import shutil
 import tempfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from django.test import TestCase, override_settings
+from django.utils import timezone
 
 from chatbot.bot import identity
 from chatbot.bot.assistant import FALLBACK_REPLY, MAX_TOOL_ROUNDS, SAVE_REMINDER, Assistant, trim_history
@@ -49,9 +50,78 @@ class SaveProspectToolTest(TestCase):
         self.assertIsNotNone(first.newly_complete)
         self.assertIsNone(again.newly_complete)
 
+    def test_tells_the_model_what_is_still_missing(self):
+        # From a real chat: with only "saved" to go on, the model told the user an advisor would call, without dates.
+        Prospect.objects.create(telegram_id='42', ine_file_id='demo-sample')
+        result = save_prospect_info('42', {**COMPLETE, 'dates': '', 'nights': ''})
+        self.assertIn('Still missing: travel dates.', result.message)
+        self.assertIn('Do NOT say an advisor will contact them', result.message)
+        self.assertIsNone(result.newly_complete)
+
+    def test_exact_dates_give_the_nights(self):
+        Prospect.objects.create(telegram_id='42', ine_file_id='demo-sample')
+        arrival = timezone.localdate() + timedelta(days=30)
+        stay = {'check_in': arrival.isoformat(), 'check_out': (arrival + timedelta(days=5)).isoformat()}
+        # The nights sent alongside are a guess; the dates decide.
+        result = save_prospect_info('42', {**COMPLETE, 'dates': '', 'nights': 6, **stay})
+        prospect = Prospect.objects.get(telegram_id='42')
+        self.assertEqual(prospect.nights, '5')
+        self.assertEqual(prospect.dates, f"{arrival:%d/%m/%Y} al {arrival + timedelta(days=5):%d/%m/%Y}")
+        self.assertIn('serían 5 noches', result.message)
+        self.assertIsNotNone(result.newly_complete)
+
+    def test_approximate_dates_leave_the_nights_to_ask(self):
+        save_prospect_info('42', {'dates': 'Semana Santa'})
+        result = save_prospect_info('42', {'name': 'Ana López'})
+        self.assertIn('number of nights', result.message)
+        self.assertNotIn('travel dates', result.message)
+
+    def test_impossible_stays_save_nothing(self):
+        today = timezone.localdate()
+        for check_in, check_out in [(today - timedelta(days=1), today + timedelta(days=3)),  # a year the model got wrong
+                                    (today + timedelta(days=9), today + timedelta(days=4)),
+                                    (today, today + timedelta(days=61))]:
+            result = save_prospect_info('42', {'name': 'Ana López', 'check_in': check_in.isoformat(), 'check_out': check_out.isoformat()})
+            self.assertIn('Validation error', result.message)
+        self.assertIn('YYYY-MM-DD', save_prospect_info('42', {'check_in': '20 de diciembre', 'check_out': '25 de diciembre'}).message)
+        self.assertFalse(Prospect.objects.filter(telegram_id='42', name='Ana López').exists())
+
+    def test_only_numbers_the_user_said_are_saved(self):
+        # From real chats: "2 adultos 2 niños" came back with nights 7, "en Semana Santa" with made-up exact days.
+        result = save_prospect_info('42', {'passengers_adult': 2, 'nights': 7}, said='2 adultos 2 niños.')
+        self.assertIn('never said 7 nights', result.message)
+        prospect = Prospect.objects.get(telegram_id='42')
+        self.assertEqual((prospect.passengers_adult, prospect.nights), (2, ''))
+        arrival = timezone.localdate() + timedelta(days=120)
+        invented = {'dates': 'Semana Santa', 'check_in': arrival.isoformat(), 'check_out': (arrival + timedelta(days=7)).isoformat()}
+        save_prospect_info('42', invented, said='Todavía no sé bien, en Semana Santa')
+        self.assertEqual(Prospect.objects.get(telegram_id='42').dates, 'Semana Santa')
+
+    def test_numbers_in_words_and_confirmed_proposals_count(self):
+        save_prospect_info('42', {'nights': 4}, said='Unas cuatro noches')
+        self.assertEqual(Prospect.objects.get(telegram_id='42').nights, '4')
+        save_prospect_info('42', {'nights': 7}, said='Una semana\nSí\nEntonces serían 7 noches, ¿correcto?')
+        self.assertEqual(Prospect.objects.get(telegram_id='42').nights, '7')
+
+    def test_the_users_words_survive_exact_dates_the_model_got_wrong(self):
+        # From a real chat: "en Semana Santa" became check_in 2026-03-29, months in the past.
+        last_year = timezone.localdate() - timedelta(days=200)
+        result = save_prospect_info('42', {'dates': 'Semana Santa', 'check_in': last_year.isoformat(),
+                                           'check_out': (last_year + timedelta(days=2)).isoformat()})
+        self.assertIn('saved as the user said them', result.message)
+        self.assertEqual(Prospect.objects.get(telegram_id='42').dates, 'Semana Santa')
+
     def test_passenger_counts_must_be_numbers(self):
         result = save_prospect_info('42', {'passengers_adult': 'dos'})
         self.assertIn('whole number', result.message)
+
+    def test_nights_must_be_a_number(self):
+        save_prospect_info('42', {'nights': '4 noches'})
+        self.assertEqual(Prospect.objects.get(telegram_id='42').nights, '4')
+        # From a real chat: the model put the dates in the nights field.
+        result = save_prospect_info('42', {'nights': 'hacia Semana Santa'})
+        self.assertIn("'nights' must be a number", result.message)
+        self.assertEqual(Prospect.objects.get(telegram_id='42').nights, '4')
 
     def test_zero_placeholders_are_not_answers(self):
         save_prospect_info('42', {'name': 'Ana López', 'nights': 0, 'passengers_adult': 0, 'passengers_child': 0})
@@ -98,6 +168,25 @@ class AssistantTest(TestCase):
         self.assertEqual(turn.reply, 'De acuerdo.')
         self.assertEqual(len(client.requests), 2)
 
+    async def test_trip_details_also_get_the_reminder(self):
+        for message in ('2 adultos 2 niños.', 'Del 20 al 25 de diciembre', 'Quiero ir a Cozumel'):
+            client = FakeOpenAI(text('¡Perfecto!'), text('¡Perfecto!'))
+            await Assistant(client, CONFIG).respond('7', [], message, NOW)
+            self.assertEqual(client.requests[1]['messages'][-1]['content'], SAVE_REMINDER, message)
+
+    async def test_an_unfinished_profile_is_not_handed_to_an_advisor(self):
+        await Prospect.objects.acreate(telegram_id='7', name='Ana López', ine_file_id='tg-file')
+        client = FakeOpenAI(text('Un asesor se pondrá en contacto contigo pronto.'), text('¿A qué destino te gustaría viajar?'))
+        turn = await Assistant(client, CONFIG).respond('7', [], 'Sí, correcto', NOW)
+        self.assertEqual(turn.reply, '¿A qué destino te gustaría viajar?')
+        self.assertIn('Still missing: phone, email, destination', client.requests[1]['messages'][-1]['content'])
+
+    async def test_a_complete_profile_is_handed_over(self):
+        await Prospect.objects.acreate(telegram_id='7', ine_file_id='tg-file', **{**COMPLETE, 'phone': '+529981234567'})
+        client = FakeOpenAI(text('Un asesor se pondrá en contacto contigo pronto.'))
+        turn = await Assistant(client, CONFIG).respond('7', [], 'Gracias', NOW)
+        self.assertEqual(turn.reply, 'Un asesor se pondrá en contacto contigo pronto.')
+
     async def test_json_that_is_not_a_tool_call_is_left_alone(self):
         client = FakeOpenAI(text('Un ejemplo: {"name": "Ana"}'))
         turn = await Assistant(client, CONFIG).respond('7', [], 'Hola', NOW)
@@ -113,6 +202,21 @@ class AssistantTest(TestCase):
         self.assertEqual(turn.reply, 'Listo.')
         self.assertEqual(len(client.requests), 3)
 
+    async def test_the_tool_checks_numbers_against_the_conversation(self):
+        history = [{'role': 'user', 'content': 'Quiero 5 noches'}, {'role': 'assistant', 'content': '¿Cuántos adultos?'}]
+        client = FakeOpenAI(tool_call('save_prospect_info', {'nights': 5, 'passengers_adult': 3}), text('Gracias.'))
+        await Assistant(client, CONFIG).respond('7', history, 'Somos 2 adultos', NOW)
+        prospect = await Prospect.objects.aget(telegram_id='7')
+        self.assertEqual(prospect.nights, '5')  # said in an earlier message
+
+    async def test_a_call_repeated_in_one_response_runs_once(self):
+        repeated = tool_call('save_prospect_info', {'name': 'Ana López'})
+        repeated.tool_calls *= 6
+        client = FakeOpenAI(repeated, text('Gracias, Ana.'))
+        turn = await Assistant(client, CONFIG).respond('7', [], 'Me llamo Ana López', NOW)
+        self.assertEqual(len(turn.tools), 1)
+        self.assertEqual([m['role'] for m in client.requests[1]['messages']], ['system', 'user', 'assistant', 'tool'])
+
     async def test_stops_a_model_that_never_stops_calling_tools(self):
         client = FakeOpenAI(*[tool_call('save_prospect_info', {'name': 'Ana López'}, str(i)) for i in range(MAX_TOOL_ROUNDS)])
         turn = await Assistant(client, CONFIG).respond('7', [], 'Hola', NOW)
@@ -121,7 +225,7 @@ class AssistantTest(TestCase):
     async def test_marks_the_conversation_finished_and_reports_complete_prospects(self):
         await Prospect.objects.acreate(telegram_id='7', ine_file_id='tg-file')
         client = FakeOpenAI(tool_call('save_prospect_info', COMPLETE), text('Un asesor te contactará.'))
-        turn = await Assistant(client, CONFIG).respond('7', [], 'Todos mis datos', NOW)
+        turn = await Assistant(client, CONFIG).respond('7', [], 'Todos mis datos, 5 noches', NOW)
         self.assertEqual(len(turn.completed_prospects), 1)
         self.assertFalse(turn.finished)
 

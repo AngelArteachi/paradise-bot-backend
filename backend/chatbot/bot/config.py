@@ -43,7 +43,8 @@ def load_config() -> BotConfig:
         ai_base_url=os.getenv('AI_BASE_URL', '').strip(),
         model=os.getenv('AI_MODEL') or pick('ai_model', 'OPENAI_MODEL', 'gpt-4o-mini'),
         vision_model=os.getenv('AI_VISION_MODEL') or os.getenv('OPENAI_VISION_MODEL', 'gpt-4o-mini'),
-        temperature=setting.temperature if setting and setting.temperature is not None else 0.7,
+        temperature=float(os.getenv('AI_TEMPERATURE') or 0) or (
+            setting.temperature if setting and setting.temperature is not None else 0.7),
         max_tokens=setting.max_tokens if setting and setting.max_tokens else 500,
         assistant_name=pick('assistant_name', 'ASSISTANT_NAME', 'Asistente Paradise'),
         tone=pick('conversation_tone', 'ASSISTANT_TONE', 'Amigable'),

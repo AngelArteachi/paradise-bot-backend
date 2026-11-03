@@ -25,6 +25,13 @@ class ProviderConfigTest(TestCase):
         self.assertTrue(config.ai_ready)
         self.assertEqual(config.model, 'qwen2.5:7b')
 
+    def test_the_temperature_can_come_from_the_environment(self):
+        BotSetting.objects.create(temperature=0.7)
+        with mock.patch.dict('os.environ', {'AI_TEMPERATURE': '0.2'}):
+            self.assertEqual(load_config().temperature, 0.2)
+        with mock.patch.dict('os.environ', {'AI_TEMPERATURE': ''}):
+            self.assertEqual(load_config().temperature, 0.7)
+
     def test_without_key_or_endpoint_the_ai_is_not_ready(self):
         with mock.patch.dict('os.environ', {'AI_BASE_URL': '', 'AI_API_KEY': '', 'OPENAI_API_KEY': ''}):
             self.assertFalse(load_config().ai_ready)
@@ -81,7 +88,7 @@ class WebChatTest(TestCase):
         self.use_model(tool_call('save_prospect_info', COMPLETE), text('Ahora tu INE, por favor.'),
                        text('¡Listo! Un asesor te contactará.'))
         session = self.start()['session']
-        first = self.say(session, message='Estos son mis datos').json()
+        first = self.say(session, message='Estos son mis datos, 4 noches').json()
         self.assertIsNone(first['advisor_notification'])
         self.assertFalse(first['prospect']['is_complete'])
         state = self.say(session, sample_id=True).json()
@@ -95,7 +102,7 @@ class WebChatTest(TestCase):
                        tool_call('save_prospect_info', {'nights': '5'}), text('Actualizado.'))
         session = self.start()['session']
         self.say(session, sample_id=True)
-        complete = self.say(session, message='Estos son mis datos').json()
+        complete = self.say(session, message='Estos son mis datos, 4 noches').json()
         self.assertIn('Cozumel', complete['advisor_notification'])
         again = self.say(session, message='Mejor 5 noches').json()
         self.assertIsNone(again['advisor_notification'])
