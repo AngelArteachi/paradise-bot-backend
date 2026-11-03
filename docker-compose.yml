@@ -36,6 +36,8 @@ services:
       WEB_CHAT_ENABLED: "true"
       AI_BASE_URL: http://ollama:11434/v1
       AI_MODEL: ${AI_MODEL:-qwen2.5:7b}
+      # At the panel's default of 0.7 the 7B model makes up dates and nights.
+      AI_TEMPERATURE: "0.2"
       BUSINESS_TIMEZONE: America/Cancun
     volumes:
       - data:/data

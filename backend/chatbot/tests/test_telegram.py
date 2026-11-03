@@ -70,13 +70,13 @@ class TelegramHandlerTest(TestCase):
     async def test_the_conversation_survives_between_messages(self):
         fake = self.use_model(text('¿Cuál es tu nombre?'), text('Mucho gusto, Ana.'))
         bot = FakeBot()
-        await telegram_app.on_message(update_for(FakeMessage('Quiero ir a Cancún')), context_for(bot))
+        await telegram_app.on_message(update_for(FakeMessage('Hola, quiero viajar')), context_for(bot))
         second = FakeMessage('Ana')
         await telegram_app.on_message(update_for(second), context_for(bot))
         self.assertEqual(second.replies, ['Mucho gusto, Ana.'])
         # The second request contains the first exchange, read back from the database.
         sent = [m.get('content') for m in fake.requests[1]['messages']]
-        self.assertIn('Quiero ir a Cancún', sent)
+        self.assertIn('Hola, quiero viajar', sent)
         self.assertIn('¿Cuál es tu nombre?', sent)
 
     async def test_advisors_are_notified_once_when_a_prospect_completes(self):
@@ -86,7 +86,7 @@ class TelegramHandlerTest(TestCase):
         self.use_model(text('Hola'), tool_call('save_prospect_info', complete), text('Un asesor te llamará.'),
                        tool_call('save_prospect_info', {'nights': '5'}), text('Actualizado.'))
         bot = FakeBot()
-        for words in ['Hola, quiero cotizar', 'Estos son mis datos', 'Mejor 5 noches']:
+        for words in ['Hola, quiero cotizar', 'Estos son mis datos, 4 noches', 'Mejor 5 noches']:
             await telegram_app.on_message(update_for(FakeMessage(words)), context_for(bot))
         advisor_messages = [text for chat, text in bot.sent if chat == '-1001']
         self.assertEqual(len(advisor_messages), 1)

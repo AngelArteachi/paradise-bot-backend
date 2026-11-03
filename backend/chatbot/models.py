@@ -63,12 +63,19 @@ class Prospect(models.Model):
         return bool(self.ine_file or self.ine_file_id)
 
     @property
+    def missing_fields(self) -> list[str]:
+        """What an advisor still needs to call the person back and quote the trip, in the order the bot asks for it."""
+        required = [
+            ('name', self.name), ('phone', self.phone), ('email', self.email), ('ID photo', self.has_id_document),
+            # Exact dates fill in the nights, so the nights are only asked once the dates turn out to be approximate.
+            ('destination', self.destination), ('travel dates', self.dates), ('number of nights', self.nights or not self.dates),
+            ('number of adults and children', self.passengers_adult is not None),
+        ]
+        return [label for label, value in required if not value]
+
+    @property
     def is_complete(self) -> bool:
-        """Everything an advisor needs to call the person back and quote the trip."""
-        return bool(
-            self.name and self.phone and self.email and self.has_id_document
-            and self.destination and self.dates and self.nights and self.passengers_adult is not None
-        )
+        return not self.missing_fields
 
     def __str__(self):
         return f"{self.name} - {self.phone}"

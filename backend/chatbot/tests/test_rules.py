@@ -34,7 +34,8 @@ class ProspectValidationTest(TestCase):
     def test_is_complete_needs_every_field_an_advisor_uses(self):
         prospect = Prospect(telegram_id='1', name='Ana', phone='9981234567', email='ana@example.com',
                             destination='Cancún', dates='10-15 marzo', nights='5', passengers_adult=2)
-        self.assertFalse(prospect.is_complete)  # no ID yet
+        self.assertFalse(prospect.is_complete)
+        self.assertEqual(prospect.missing_fields, ['ID photo'])
         prospect.ine_file_id = 'telegram-file-id'
         self.assertTrue(prospect.is_complete)
 
